@@ -90,10 +90,11 @@
 
         .text {
             font-family: 'Press Start 2P', monospace;
-            font-size: 14px;
-            line-height: 120%;
-            color: var(--green);
-            margin: 4vw;
+            font-size: clamp(13px, min(4.2vw, 6vh), 16px);
+            line-height: 155%;
+            color: var(--maroon-dark);
+            margin: 1vw auto;
+            max-width: min(92%, 820px);
         }
 
         .name-input {
@@ -262,7 +263,7 @@
             <div class="header">
                 <h1 class="title">CONGRATULATIONS</h1>
                 <p class="subtitle" id="subtitleText">Academic Nuclear Warhead</p>
-                <p class="text">You did na incredible job! Class Valedictorian and Magna Cum Laude. Cheers to you and your work. May a greater force guide you and protect you, as you are surrounded by people who love you. Keep your head held high and your feet on the ground!</p>
+                <p class="text" id="bodyText">You did na incredible job! Class Valedictorian and Magna Cum Laude. Cheers to you and your work. May a greater force guide you and protect you, as you are surrounded by people who love you. Keep your head held high and your feet on the ground!</p>
             </div>
 
             <div class="flower-stage" id="flowerStage"></div>
@@ -280,19 +281,59 @@
             bobHeightPx: 0,
             bobDurationS: 1.8,
             bloomDurationS: 0.85,
-            // Negative value sinks the plant's base into the ground texture so it
-            // reads as rooted/planted rather than floating above the dirt line.
-            rootInsetPx: -18,
+            rootInsetPx: -28,
             plantOffsetX: 0,
             plantOffsetY: 0,
             glintEveryMs: [180, 260],
             sparkleEveryMs: 600,
             glintOpacity: 0.55,
-            // How far (0-1, normalized to the head's max span) each glint step
-            // advances the radial sunlight sweep, and how wide the lit ring is.
             glintStep: 0.1,
-            glintBandWidth: 0.16
+            glintBandWidth: 0.16,
+            minPixelSize: 5,
+            maxPixelSize: 16
         };
+
+        function typeWriterEffect(el, speed = 142) {
+            const fullText = el.textContent;
+            el.textContent = '';
+            let i = 0;
+            function step() {
+                if (i <= fullText.length) {
+                    el.textContent = fullText.slice(0, i);
+                    i++;
+                    setTimeout(step, speed);
+                }
+            }
+            step();
+        }
+
+        const bodyTextEl = document.getElementById('bodyText');
+        if (bodyTextEl) {
+            typeWriterEffect(bodyTextEl, 22);
+        }
+
+        function computePixelSize(cfg) {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const totalCells = cfg.headCells + cfg.stemRows;
+
+            const maxByWidth = w / (cfg.headCells * 2.6);
+            const maxByHeight = (h * 0.32) / totalCells;
+
+            const size = Math.min(maxByWidth, maxByHeight);
+            return Math.max(cfg.minPixelSize, Math.min(cfg.maxPixelSize, size));
+        }
+
+        const HEAD_COLORS = {
+            C1: getVar('--maroon'),
+            C2: getVar('--maroon-dark'),
+            P1: getVar('--gold-light'),
+            P2: getVar('--gold'),
+        };
+
+        function getVar(name) {
+            return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        }
 
         function buildHeadGrid(size, numPetals, centerRatio, progress = 1) {
             const grid = [];
@@ -325,18 +366,6 @@
             return grid;
         }
 
-        const HEAD_COLORS = {
-            C1: getVar('--maroon'),
-            C2: getVar('--maroon-dark'),
-            P1: getVar('--gold-light'),
-            P2: getVar('--gold'),
-        };
-
-        function getVar(name) {
-            return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-        }
-
-        // Manual plant placement lives here if you want to tweak the stem/head position.
         function drawStem(canvas, cfg, progress) {
             const size = cfg.headCells;
             const px = cfg.pixelSize;
@@ -388,13 +417,6 @@
                 ctx.fillRect((stemColStart + 3) * px + offsetX, (totalRows - 3 - Math.floor(cfg.stemRows * 0.38)) * px + offsetY, px, px);
             }
 
-            // Neck fill: the head is a round, petaled shape, so at low angles
-            // its bottom edge only reaches the stem column in a few narrow
-            // spots (petal tips), which reads as the head floating above the
-            // stem. Fill a solid green column up under the head's center so
-            // there's always stem-colored mass behind it — hidden wherever
-            // the head is opaque, visible wherever the petals gap, which
-            // bridges the two into one continuous plant.
             if (stemReveal >= 1) {
                 const neckTopRow = Math.floor(size * 0.4);
                 ctx.fillStyle = getVar('--green');
@@ -410,11 +432,6 @@
                 }
             }
 
-            // Root flare: once the stem is fully grown, widen its base so the
-            // plant reads as anchored/spreading into the soil rather than
-            // ending in a bare stalk. This sits at the very bottom of the
-            // canvas, which is where the negative rootInsetPx sinks the plant
-            // into the ground texture.
             if (stemReveal >= 1) {
                 const baseY = totalRows - 1;
                 ctx.fillStyle = getVar('--green-dark');
@@ -453,8 +470,6 @@
             }
         }
 
-        // Radial glint sweep: simulates a low, bottom-left light source washing
-        // outward across the flower head in rings, instead of random twinkles.
         let glintWave = 0;
 
         function pickGlintPixels(size, cfg, progress, wavePos) {
@@ -469,8 +484,6 @@
             }
             if (flowerPixels.length === 0) return [];
 
-            // Light source sits outside the grid, past the bottom-left corner,
-            // so distance-from-source rings sweep diagonally across the head.
             const sx = -size * 0.35;
             const sy = size * 1.35;
             let maxDist = 0;
@@ -535,13 +548,32 @@
         wrap.appendChild(headCanvas);
         wrap.appendChild(glintCanvas);
         flowerStage.appendChild(wrap);
-        const plantWidth = (CONFIG.headCells * CONFIG.pixelSize) + (Math.floor(CONFIG.pixelSize * 2.2) * 2);
-        const plantHeight = ((CONFIG.headCells + CONFIG.stemRows) * CONFIG.pixelSize);
-        flowerStage.style.width = plantWidth + 'px';
-        flowerStage.style.height = plantHeight + 'px';
-        flowerStage.style.bottom = `calc(10vh + ${CONFIG.rootInsetPx}px)`;
-        wrap.style.width = plantWidth + 'px';
-        wrap.style.height = plantHeight + 'px';
+
+        function layoutFlowerStage() {
+            const plantWidth = (CONFIG.headCells * CONFIG.pixelSize) + (Math.floor(CONFIG.pixelSize * 2.2) * 2);
+            const plantHeight = ((CONFIG.headCells + CONFIG.stemRows) * CONFIG.pixelSize);
+            flowerStage.style.width = plantWidth + 'px';
+            flowerStage.style.height = plantHeight + 'px';
+            flowerStage.style.bottom = `calc(10vh + ${CONFIG.rootInsetPx}px)`;
+            wrap.style.width = plantWidth + 'px';
+            wrap.style.height = plantHeight + 'px';
+        }
+
+        CONFIG.pixelSize = computePixelSize(CONFIG);
+        layoutFlowerStage();
+
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                CONFIG.pixelSize = computePixelSize(CONFIG);
+                layoutFlowerStage();
+            }, 120);
+        });
+        window.addEventListener('orientationchange', () => {
+            CONFIG.pixelSize = computePixelSize(CONFIG);
+            layoutFlowerStage();
+        });
 
         let bloomStart = null;
         function renderFlower(now) {
